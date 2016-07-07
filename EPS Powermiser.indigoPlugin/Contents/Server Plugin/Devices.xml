@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<!-- EPS (ColoradoFourWheeler) Plugin -->
+<Devices>
+	<Device type="custom" id="AutoOff">
+		<Name>Auto Off</Name>
+		<ConfigUI>
+			<Field type="list" id="devicelist" defaultValue="default" rows="12">
+				<Label>Devices:</Label>
+				<List class="self" filter="onOffState" method="getDevicesWithStates" dynamicReload="true"/>
+			</Field>
+			
+			<Field id="timeOut" type="textfield" defaultValue="5">
+				<Label>Auto off minutes:</Label>
+			</Field>
+			
+			<Field type="checkbox" id="physicalOnly" defaultValue="true">
+				<Label> </Label>
+				<Description>Only when physically switched on</Description>
+			</Field>
+			
+			<Field type="checkbox" id="tapDuration" defaultValue="true" >
+				<Label> </Label>
+				<Description>Extend duration when switched on repeatedly</Description>
+			</Field>
+			
+			<Field id="extendTime" type="textfield" defaultValue="5" visibleBindingId="tapDuration" visibleBindingValue="true">
+				<Label>Minutes to extend by:</Label>
+			</Field>
+			
+			<Field id="turnOn" type="textfield" defaultValue="3">
+				<Label>Repeats before staying on:</Label>
+			</Field>
+			
+		</ConfigUI>
+		<States>
+			<!-- All EPS plugins have this state and use it for the Indigo lists -->
+			<State id="statedisplay">
+				<ValueType>String</ValueType>
+				<TriggerLabel>Current device state</TriggerLabel>
+				<ControlPageLabel>Current device state</ControlPageLabel>
+			</State>
+			
+			<State id="sep_statedisplay">
+				<ValueType>Separator</ValueType>
+			</State>
+			
+			<State id="autoOffTimes">
+				<ValueType>String</ValueType>
+				<TriggerLabel>Plugin specific state unsuitable for triggers</TriggerLabel>
+				<ControlPageLabel>Plugin specific state unsuitable for control pages</ControlPageLabel>
+			</State>
+			
+		</States>
+		<UiDisplayStateId>statedisplay</UiDisplayStateId>
+	</Device>
+
+</Devices>
