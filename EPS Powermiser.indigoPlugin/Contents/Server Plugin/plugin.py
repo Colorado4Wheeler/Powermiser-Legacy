@@ -9,6 +9,7 @@ import time
 import datetime
 
 from eps.cache import cache
+from eps.conditions import conditions
 from eps import ui
 from eps import dtutil
 from eps import eps
@@ -64,6 +65,7 @@ class Plugin(indigo.PluginBase):
 		eps.parent = self
 		self.reload = False
 		self.cache = cache (self, pluginId, pollingMode, pollingInterval, pollingFrequency)
+		self.cond = conditions (self)
 		
 		# EPS plugin specific variables and classes
 		
@@ -96,6 +98,7 @@ class Plugin(indigo.PluginBase):
 		s += eps.debugLine (self.pluginDisplayName + " - v" + self.pluginVersion)
 		s += eps.debugHeaderEx ()
 		s += eps.debugLine ("Cache %s" % self.cache.version)
+		s += eps.debugLine ("Conditions %s" % self.cond.version)
 		s += eps.debugLine ("UI %s" % ui.libVersion(True))
 		s += eps.debugLine ("DateTime %s" % dtutil.libVersion(True))
 		s += eps.debugLine ("Core %s" % eps.libVersion(True))
@@ -183,7 +186,6 @@ class Plugin(indigo.PluginBase):
 	# Device menu selection changed
 	#
 	def onDeviceSelectionChange (self, valuesDict, typeId, devId):
-		# Just here so we can refresh the states for dynamic UI
 		return valuesDict
 		
 	#
@@ -228,7 +230,7 @@ class Plugin(indigo.PluginBase):
 	#
 	def getDataList(self, filter="", valuesDict=None, typeId="", targetId=0):
 		return ui.getDataList (filter, valuesDict, typeId, targetId)
-		
+	
 	#
 	# Handle ui button click
 	#
@@ -262,6 +264,35 @@ class Plugin(indigo.PluginBase):
 					dev.updateStateOnServer("statedisplay", "on")
 		
 		return
+		
+	################################################################################
+	# EPS CONDITIONS ROUTINES
+	################################################################################		
+	
+	#
+	# Conditions field changed
+	#
+	def onConditionsChange (self, valuesDict, typeId, devId):
+		# Just here so we can refresh the states for dynamic UI
+		if typeId == "AutoOff":
+			valuesDict = self.cond.setUIDefaults (valuesDict, "timebetween")
+					
+		return valuesDict
+		
+	#
+	# Return conditions library options
+	#
+	def getConditionsList (self, filter="conditions", valuesDict=None, typeId="", targetId=0):
+		if filter.lower() == "conditions": return self.cond.appendUIConditions ([], "all")	
+		if filter.lower() == "evals": return self.cond.addUIEvals ([])	
+		if filter.lower() == "conditionmenu": return self.cond.addUIConditionMenu ([])	
+		
+	
+	#
+	# Return custom list with condition options
+	#
+	def getConditionDateValues(self, filter="", valuesDict=None, typeId="", targetId=0):
+		return self.cond.getConditionDateValues (filter, valuesDict, typeId, targetId)
 		
 		
 	################################################################################
@@ -317,8 +348,9 @@ class Plugin(indigo.PluginBase):
 	#
 	def insteonCommandReceived (self, cmd):
 		dev = self.cache.deviceForAddress (cmd.address)
-		if dev: 
-			self.processRawCommand (dev, cmd.cmdFunc)
+		if dev:
+			for devId in dev: 
+				self.processRawCommand (indigo.devices[devId], cmd.cmdFunc)
 		
 	#
 	# Insteon command sent
@@ -326,7 +358,8 @@ class Plugin(indigo.PluginBase):
 	def insteonCommandSent (self, cmd):
 		dev = self.cache.deviceForAddress (cmd.address)
 		if dev: 
-			self.processRawCommand (dev, cmd.cmdFunc, "Indigo") # Outgoing means Indigo sent the command, it's not a button press
+			for devId in dev: 
+				self.processRawCommand (indigo.devices[devId], cmd.cmdFunc, "Indigo") # Outgoing means Indigo sent the command, it's not a button press
 			
 	#
 	# Device property changed
@@ -347,6 +380,9 @@ class Plugin(indigo.PluginBase):
 				self.debugLog(u"Plugin device %s settings changed, rebuilding watched states" % origDev.name)
 				self.cache.removeDevice (origDev.id)
 				self.deviceStartComm (newDev)
+				
+			# Collapse conditions if they got expanded
+			self.cond.collapseAllConditions (newDev)
 			
 		else:
 			
@@ -387,19 +423,30 @@ class Plugin(indigo.PluginBase):
 		dev = indigo.devices[devId]
 		self.debugLog(u"%s is validating device configuration UI" % dev.name)
 		
+		if len(valuesDict["devicelist"]) == 0:
+			errorDict = indigo.Dict()
+			errorDict["devicelist"] = "You must select at least one device"
+			errorDict["showAlertText"] = "You must select at least one device for this plugin to work!"
+			return (False, valuesDict, errorDict)
+		
 		# Make sure they aren't choosing a device that is already on another auto off device
 		for deviceId in valuesDict["devicelist"]:
 			for dev in indigo.devices.iter(self.pluginId):
 				if str(dev.id) != str(devId):
 					if eps.valueValid (dev.pluginProps, "devicelist", True):
 						for d in dev.pluginProps["devicelist"]:
-							if d == deviceId:
+							if d == deviceId and valuesDict["allowSave"] == False:
 								errorDict = indigo.Dict()
 								errorDict["devicelist"] = "One or more devices are already managed by other Powermiser auto-off devices"
-								errorDict["showAlertText"] = "You are already managing %s in another Powermiser auto-off device, you cannot include it here" % indigo.devices[int(deviceId)].name
+								errorDict["showAlertText"] = "You are already managing %s in another Powermiser auto-off device, the conditions could overlap and cause problems.\n\nBe sure that your conditions are different enough not to collide with the other Powermiser device.\n\nThis is only a warning, hit save again to ignore this warning." % indigo.devices[int(deviceId)].name
+								valuesDict["allowSave"] = True
 								return (False, valuesDict, errorDict)
 		
-		return (True, valuesDict)
+		# All is good, set the allowSave back to false for the next round
+		valuesDict["allowSave"] = False
+		
+		# If we get here all is good so far, return from conditions in case there are problems there
+		return self.cond.validateDeviceConfigUi(valuesDict, typeId, devId)
 		
 	#
 	# Device config button clicked event
@@ -648,7 +695,7 @@ class Plugin(indigo.PluginBase):
 							
 							if devParent.pluginProps["physicalOnly"] and cmd == "on" and method != "Physical":
 								self.debugLog("\t%s is configured for physical only, this on command was sent from Insteon so it will be ignored" % devParent.name)
-								return
+								continue # so we can see if it's in another Powermiser device
 							
 							if devChild.id in autoOffTimes:
 								self.debugLog ("\tThe device is currently in an on state in the plugin")
@@ -681,6 +728,10 @@ class Plugin(indigo.PluginBase):
 		try:
 			d = indigo.server.getTime()
 			
+			if self.cond.conditionsPass (devParent) == False:
+				self.debugLog ("\tDevice doesn't pass conditions, ignoring command")
+				return
+			
 			if devChild.id in autoOffTimes:
 				if devParent.pluginProps["tapDuration"]:
 					if eps.valueValid (devParent.pluginProps, "extendTime", True):
@@ -702,10 +753,11 @@ class Plugin(indigo.PluginBase):
 						
 						autoOffTimes[devChild.id] = offDict
 						devParent.updateStateOnServer("autoOffTimes", unicode(autoOffTimes))
-						self.debugLog ("\tThe device will now turn off automatically at %s" % autoOff.strftime("%Y-%m-%d %H:%M:%S"))
+						self.debugLog ("\tThe device will turn off automatically at %s" % autoOff.strftime("%Y-%m-%d %H:%M:%S"))
 						
 			else:
 				self.debugLog ("\tSetting the initial auto off time")
+				
 				if eps.valueValid (devParent.pluginProps, "timeOut", True):
 					offDict = {}
 					offDict["repeats"] = 1
@@ -715,7 +767,7 @@ class Plugin(indigo.PluginBase):
 					
 					autoOffTimes[devChild.id] = offDict
 					devParent.updateStateOnServer("autoOffTimes", unicode(autoOffTimes))
-					self.debugLog ("\tThe device will not turn off automatically at %s" % autoOff.strftime("%Y-%m-%d %H:%M:%S"))
+					self.debugLog ("\tThe device will turn off automatically at %s" % autoOff.strftime("%Y-%m-%d %H:%M:%S"))
 		
 		except Exception as e:
 			eps.printException(e)

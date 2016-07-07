@@ -4,12 +4,13 @@ import indigo
 import sys
 import string
 import calendar
+import eps
 
 #
 # Print library version - added optional return in 1.0.2
 #
 def libVersion (returnval = False):
-	ver = "1.0.4"
+	ver = "1.0.5"
 	if returnval: return ver
 	
 	indigo.server.log ("##### EPS UI %s #####" % ver)
@@ -136,6 +137,9 @@ def getDataList(filter, valuesDict=None, typeId="", targetId=0):
 				
 					if hour == 0:
 						hourEx = 12
+						
+					elif hour == 12:
+						am = " PM"
 				
 					elif hour > 12:
 						hourEx = hour - 12
@@ -149,9 +153,93 @@ def getDataList(filter, valuesDict=None, typeId="", targetId=0):
 					
 			return retAry
 			
-		# Return month strings with number values - 1.0.3
+		# Create list for months of the year - 1.0.5
 		if filter.lower() == "months":
-			return _getMonths (filter, valuesDict)
+			monthAry = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+			monthnum = 1
+			for s in monthAry:
+				option = ("%02d" % monthnum, s)
+				retAry.append(option)
+				monthnum = monthnum + 1
+				
+			return retAry
+			
+		# Years (from 2010 to 2030)
+		if filter.lower() == "years":
+			startyear = 2010
+			for i in range (0, 21):
+				option = (str(startyear + i), str(startyear + i))
+				retAry.append(option)
+				
+			return retAry
+			
+		# Days of the week
+		if filter.lower() == "dow":
+			dayAry = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+			daynum = 0
+			for s in dayAry:
+				option = (daynum, s)
+				retAry.append(option)
+				daynum = daynum + 1
+				
+			return retAry
+		
+		# Days of the month (i.e., monthdays#month#year - 1.0.5
+		x = string.find (filter, 'monthdays')
+		if x > -1:
+			data = filter.split("#")
+			if len(data) == 1: # no options, return 31 days
+				for i in range (1, 32):
+					option = ("%02d" % i, i)
+					retAry.append(option)
+					
+				return retAry
+			
+			elif len(data) == 2 or len(data) == 3: # Month variable
+				if eps.valueValid(valuesDict, data[1], True) == False: return retAry # no data will cause an error
+
+				try:
+					month = int(valuesDict[data[1]])
+				except:
+					# Could be doing something like "any", return generic
+					for i in range (1, 32):
+						option = ("%02d" % i, i)
+						retAry.append(option)
+					
+					return retAry
+				
+				d = indigo.server.getTime()
+				year = int(d.strftime("%Y")) # assume this year
+				
+				if len(data) == 2:
+					year = int(d.strftime("%Y"))
+				else:
+					if eps.valueValid (valuesDict, data[2], True):
+						year = valuesDict[data[2]]
+						
+						if year == "current": 
+							year = int(d.strftime("%Y"))
+						elif year == "last":
+							year = int(d.strftime("%Y")) - 1
+						elif year == "next":
+							year = int(d.strftime("%Y")) + 1
+						elif year == "any":
+							# base months on this year
+							year = int(d.strftime("%Y"))
+						else:
+							year = int(year)
+						
+				m = calendar.monthrange(year, month)
+					
+				for i in range (1, m[1] + 1):
+					option = ("%02d" % i, i)
+					retAry.append(option)
+					
+				return retAry
+			
+		# Return month strings with number values - 1.0.3
+		#if filter.lower() == "months":
+		#	return _getMonths (filter, valuesDict)
 			
 		# Take a month variable number and return days in that month - 1.0.3
 		if filter.lower() == "dayofmonth":
