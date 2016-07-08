@@ -509,10 +509,18 @@ class cache:
 	def deviceForAddress (self, address):
 		if self.addressInCache (address) == False: return False
 		
+		ret = []
+		
 		for devId, devProps in self.devices.iteritems():
 			for subId, subProps in devProps["subDevices"].iteritems():
-				if subProps["address"] == address: return indigo.devices[int(subId)]
+				if subProps["address"] == address: 
+					alreadythere = False
+					for s in ret:
+						if s == int(subId): alreadythere = True
+						
+					if alreadythere == False: ret.append(int(subId))
 					
+		return ret
 		
 	#
 	# Check if a monitored state has changed
