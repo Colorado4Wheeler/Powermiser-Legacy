@@ -393,6 +393,10 @@ class conditions:
 		try:
 			d = indigo.server.getTime()
 			
+			# Since we don't evaluate seconds, we have to convert d to a 0 second date/time
+			dx = d.strftime("%Y-%m-%d %H:%M:00")
+			d = datetime.datetime.strptime (dx, "%Y-%m-%d %H:%M:%S")
+			
 			# If we are using a device state date (has devstate as prefix) then use that date instead
 			if string.find (dev.pluginProps["condition" + str(index)], 'devstate') > -1:
 				devEx = indigo.devices[int(dev.pluginProps["device" + str(index)])]
